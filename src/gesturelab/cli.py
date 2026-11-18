@@ -21,8 +21,11 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+from .zoom import Zoom
+
 DATA = Path("data/samples.csv")
 MODEL = Path("models/gestures.joblib")
+ZOOM_HELP = "digital zoom, 1 = the camera's full view (default 1.5; +/- while running)"
 
 
 def open_camera(index: int):  # noqa: ANN201 - cv2.VideoCapture
@@ -33,13 +36,13 @@ def open_camera(index: int):  # noqa: ANN201 - cv2.VideoCapture
         sys.exit(f"Could not open camera {index}. On macOS, allow camera access for your terminal in "
                  "System Settings > Privacy & Security > Camera, then try again. "
                  "`gesturelab cameras` lists the cameras you have.")
-    camera.set(cv2.CAP_PROP_FRAME_WIDTH, 960)
-    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 540)
+    camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)  # extra pixels for the digital zoom to crop into
+    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
     return camera
 
 
-def frames(camera):  # noqa: ANN001, ANN201
-    """Mirrored frames (selfie view) with millisecond timestamps, until the window is closed or q is pressed."""
+def frames(camera, zoom: Zoom | None = None):  # noqa: ANN001, ANN201
+    """Mirrored (selfie view), zoomed frames with millisecond timestamps, until the camera stops."""
     import cv2
 
     started = time.monotonic()
@@ -47,15 +50,19 @@ def frames(camera):  # noqa: ANN001, ANN201
         ok, frame = camera.read()
         if not ok:
             return
-        yield cv2.flip(frame, 1), int((time.monotonic() - started) * 1000)
+        frame = cv2.flip(frame, 1)
+        yield (zoom.apply(frame) if zoom else frame), int((time.monotonic() - started) * 1000)
 
 
-def show(frame) -> bool:  # noqa: ANN001
-    """Show a frame; False once the user presses q or Esc."""
+def show(frame, zoom: Zoom | None = None) -> bool:  # noqa: ANN001
+    """Show a frame and handle + / - zoom keys; False once the user presses q or Esc."""
     import cv2
 
     cv2.imshow("gesturelab", frame)
-    return (cv2.waitKey(1) & 0xFF) not in (ord("q"), 27)
+    key = cv2.waitKey(1) & 0xFF
+    if zoom is not None and zoom.key(key):
+        return True
+    return key not in (ord("q"), 27)
 
 
 def record(args: argparse.Namespace) -> None:
@@ -64,10 +71,10 @@ def record(args: argparse.Namespace) -> None:
 
     label = args.label.strip().lower().replace(" ", "_")
     session = f"{datetime.now():%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:6]}"
-    tracker, camera = HandTracker(), open_camera(args.camera)
+    tracker, camera, zoom = HandTracker(), open_camera(args.camera), Zoom(args.zoom)
     captured, frame_number, start_at = [], 0, None
     try:
-        for frame, ms in frames(camera):
+        for frame, ms in frames(camera, zoom):
             hands = tracker.detect(frame, ms)
             for hand in hands:
                 draw.skeleton(frame, hand)
@@ -80,10 +87,11 @@ def record(args: argparse.Namespace) -> None:
                 if hands and frame_number % args.every == 0:
                     captured.append(hands[0])
                 left = args.seconds - (ms - start_at) / 1000
-                draw.banner(frame, f"Recording {label}: {len(captured)} samples", f"{max(left, 0):.0f} s left · q to stop")
+                draw.banner(frame, f"Recording {label}: {len(captured)} samples",
+                            f"{max(left, 0):.0f} s left · +/- zoom · q to stop")
                 if left <= 0:
                     break
-            if not show(frame):
+            if not show(frame, zoom):
                 break
     finally:
         camera.release()
@@ -133,10 +141,10 @@ def live(args: argparse.Namespace) -> None:
 
     classifier = Classifier(args.model)
     smoother = Smoother(classifier.labels, threshold=args.threshold)
-    tracker, camera = HandTracker(), open_camera(args.camera)
+    tracker, camera, zoom = HandTracker(), open_camera(args.camera), Zoom(args.zoom)
     previous, fps, last = None, 0.0, time.monotonic()
     try:
-        for frame, ms in frames(camera):
+        for frame, ms in frames(camera, zoom):
             hands = tracker.detect(frame, ms)
             probabilities = classifier.probabilities(hands[0]) if hands else None
             gesture = smoother.update(probabilities)
@@ -146,7 +154,8 @@ def live(args: argparse.Namespace) -> None:
             fps = 0.9 * fps + 0.1 / max(now - last, 1e-6)
             last = now
             title = gesture.replace("_", " ") if gesture else ("…" if hands else "show me a hand")
-            draw.banner(frame, title, f"{smoother.confidence:.0%} confident · {fps:.0f} fps · q to quit")
+            draw.banner(frame, title,
+                        f"{smoother.confidence:.0%} confident · {fps:.0f} fps · zoom {zoom.factor:.1f}x (+/-) · q to quit")
             draw.probabilities(frame, classifier.labels, probabilities if probabilities is not None
                                else np.zeros(len(classifier.labels)), gesture)
             if gesture != previous:
@@ -154,7 +163,7 @@ def live(args: argparse.Namespace) -> None:
                     print(json.dumps({"gesture": gesture, "confidence": round(smoother.confidence, 3), "t_ms": ms}),
                           flush=True)
                 previous = gesture
-            if not show(frame):
+            if not show(frame, zoom):
                 break
     finally:
         camera.release()
@@ -174,11 +183,12 @@ def cameras(args: argparse.Namespace) -> None:
         return
     import cv2
 
+    zoom = Zoom(args.zoom)
     for camera in (c for c in found if c.width > 1):
         capture = open_camera(camera.index)
         try:
             print(f"Showing camera {camera.index}: any key for the next one, q to stop", file=sys.stderr)
-            for frame, _ in frames(capture):
+            for frame, _ in frames(capture, zoom):
                 label = f"camera {camera.index}: {camera.name or 'unnamed'}"
                 cv2.putText(frame, label, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 4, cv2.LINE_AA)
                 cv2.putText(frame, label, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2, cv2.LINE_AA)
@@ -186,6 +196,8 @@ def cameras(args: argparse.Namespace) -> None:
                 key = cv2.waitKey(1) & 0xFF
                 if key in (ord("q"), 27):
                     return
+                if zoom.key(key):
+                    continue
                 if key != 255:
                     break
         finally:
@@ -218,6 +230,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--countdown", type=int, default=3)
     p.add_argument("--every", type=int, default=2, help="keep every Nth frame (neighbouring frames are near-duplicates)")
     p.add_argument("--camera", type=int, default=0)
+    p.add_argument("--zoom", type=float, default=1.5, help=ZOOM_HELP)
     p.add_argument("--data", type=Path, default=DATA)
     p.set_defaults(run=record)
 
@@ -235,11 +248,13 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--model", type=Path, default=MODEL)
     p.add_argument("--threshold", type=float, default=0.7)
     p.add_argument("--camera", type=int, default=0)
+    p.add_argument("--zoom", type=float, default=1.5, help=ZOOM_HELP)
     p.add_argument("--events", action="store_true", help="print a JSON line whenever the gesture changes")
     p.set_defaults(run=live)
 
     p = sub.add_parser("cameras", help="list cameras by number and name, to pick one for --camera")
     p.add_argument("--show", action="store_true", help="then show each camera's picture, labelled with its number")
+    p.add_argument("--zoom", type=float, default=1.5, help=ZOOM_HELP)
     p.set_defaults(run=cameras)
 
     p = sub.add_parser("synth", help="write synthetic samples (no camera needed)")

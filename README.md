@@ -49,6 +49,8 @@ Use one with: gesturelab live --camera 1
 
 Names come from macOS, in the order OpenCV numbers the cameras. "Live" means consecutive frames differ the way a real sensor's always do, so a virtual camera showing a placeholder is caught. `gesturelab cameras --show` then shows each camera's picture labelled with its number, and nothing is saved. Pass the number to `record` and `live` with `--camera`.
 
+Laptop webcams are wide-angle, so `record` and `live` zoom in 1.5x by cropping the middle of the picture, which also gives the hand tracker more pixels per hand. Press `+` / `-` while they run to change it, or start with `--zoom 2` (`--zoom 1` is the camera's full view).
+
 ## Recording good data
 
 - Record each gesture in **3 or more short sessions** (different times, light, distance). `gesturelab info` shows what you have; `train` reports an honest held-out-session score only when there are 3+ sessions.
