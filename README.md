@@ -35,6 +35,20 @@ pip install -e ".[dev]"
 
 The first `record` or `live` downloads MediaPipe's hand landmarker model (about 7.5 MB, from Google's model storage) to `~/.cache/gesturelab`. On macOS, allow camera access for your terminal in **System Settings › Privacy & Security › Camera**.
 
+## Picking a camera
+
+OpenCV numbers cameras, and on a Mac number 0 isn't always the built-in webcam: a virtual camera app, an iPhone (Continuity Camera) or an external webcam can come first. `gesturelab cameras` lists them, for example:
+
+```
+$ gesturelab cameras
+  #  name                         size        state
+  0  xpression camera             1280x720    still image (a virtual camera that isn't running?)
+  1  FaceTime HD Camera           1920x1080   live
+Use one with: gesturelab live --camera 1
+```
+
+Names come from macOS, in the order OpenCV numbers the cameras. "Live" means consecutive frames differ the way a real sensor's always do, so a virtual camera showing a placeholder is caught. `gesturelab cameras --show` then shows each camera's picture labelled with its number, and nothing is saved. Pass the number to `record` and `live` with `--camera`.
+
 ## Recording good data
 
 - Record each gesture in **3 or more short sessions** (different times, light, distance). `gesturelab info` shows what you have; `train` reports an honest held-out-session score only when there are 3+ sessions.
@@ -72,6 +86,7 @@ Pipe it into anything: a script that skips a song on `peace`, mutes a call on `f
 | [`smoothing.py`](src/gesturelab/smoothing.py) | steadying live predictions |
 | [`dataset.py`](src/gesturelab/dataset.py) | the samples CSV |
 | [`synth.py`](src/gesturelab/synth.py) | synthetic hands |
+| [`cameras.py`](src/gesturelab/cameras.py) | which camera number is which |
 | [`draw.py`](src/gesturelab/draw.py), [`cli.py`](src/gesturelab/cli.py) | overlays and commands |
 
 ## Tests

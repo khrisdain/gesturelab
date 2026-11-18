@@ -5,6 +5,7 @@
     gesturelab info                      # how much you have recorded
     gesturelab train                     # compare models on held-out sessions, save the best
     gesturelab live                      # recognise gestures from the webcam
+    gesturelab cameras                   # which camera number is which (add --show to see each one)
 
     gesturelab synth                     # or start without a camera: synthetic hands for 8 gestures
     gesturelab train --data data/synthetic.csv
@@ -30,7 +31,8 @@ def open_camera(index: int):  # noqa: ANN201 - cv2.VideoCapture
     camera = cv2.VideoCapture(index)
     if not camera.isOpened():
         sys.exit(f"Could not open camera {index}. On macOS, allow camera access for your terminal in "
-                 "System Settings > Privacy & Security > Camera, then try again.")
+                 "System Settings > Privacy & Security > Camera, then try again. "
+                 "`gesturelab cameras` lists the cameras you have.")
     camera.set(cv2.CAP_PROP_FRAME_WIDTH, 960)
     camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 540)
     return camera
@@ -162,6 +164,35 @@ def live(args: argparse.Namespace) -> None:
         cv2.destroyAllWindows()
 
 
+def cameras(args: argparse.Namespace) -> None:
+    from .cameras import find, table
+
+    print("Checking cameras (each one switches on for a moment)…", file=sys.stderr)
+    found = find()
+    print(table(found))
+    if not args.show:
+        return
+    import cv2
+
+    for camera in (c for c in found if c.width > 1):
+        capture = open_camera(camera.index)
+        try:
+            print(f"Showing camera {camera.index}: any key for the next one, q to stop", file=sys.stderr)
+            for frame, _ in frames(capture):
+                label = f"camera {camera.index}: {camera.name or 'unnamed'}"
+                cv2.putText(frame, label, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 4, cv2.LINE_AA)
+                cv2.putText(frame, label, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2, cv2.LINE_AA)
+                cv2.imshow("gesturelab", frame)
+                key = cv2.waitKey(1) & 0xFF
+                if key in (ord("q"), 27):
+                    return
+                if key != 255:
+                    break
+        finally:
+            capture.release()
+            cv2.destroyAllWindows()
+
+
 def synth(args: argparse.Namespace) -> None:
     from . import dataset
     from .synth import dataset as generate
@@ -206,6 +237,10 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--camera", type=int, default=0)
     p.add_argument("--events", action="store_true", help="print a JSON line whenever the gesture changes")
     p.set_defaults(run=live)
+
+    p = sub.add_parser("cameras", help="list cameras by number and name, to pick one for --camera")
+    p.add_argument("--show", action="store_true", help="then show each camera's picture, labelled with its number")
+    p.set_defaults(run=cameras)
 
     p = sub.add_parser("synth", help="write synthetic samples (no camera needed)")
     p.add_argument("--out", type=Path, default=Path("data/synthetic.csv"))
