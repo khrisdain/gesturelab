@@ -91,6 +91,10 @@ Pipe it into anything: a script that skips a song on `peace`, mutes a call on `f
 | [`cameras.py`](src/gesturelab/cameras.py) | which camera number is which |
 | [`draw.py`](src/gesturelab/draw.py), [`cli.py`](src/gesturelab/cli.py) | overlays and commands |
 
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md): a public benchmark, dynamic gestures, a browser demo and few-shot gestures.
+
 ## Tests
 
 ```bash
