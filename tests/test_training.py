@@ -76,3 +76,14 @@ def test_the_smoother_averages_out_flicker():
     smoother = Smoother(["fist", "peace"], alpha=0.35, threshold=0.7, hold=2)
     frames = [np.array([0.05, 0.95])] * 6 + [np.array([0.6, 0.4])] + [np.array([0.05, 0.95])] * 2
     assert [smoother.update(f) for f in frames][-3:] == ["peace", "peace", "peace"]
+
+
+def test_a_lost_hand_clears_the_history_so_the_next_gesture_starts_fresh():
+    smoother = Smoother(["fist", "peace"], alpha=0.35, threshold=0.7, hold=2)
+    for _ in range(10):
+        smoother.update(np.array([0.02, 0.98]))  # a long, confident peace sign
+    assert smoother.current == "peace"
+    smoother.update(None)  # the hand leaves the frame
+    fist = np.array([0.95, 0.05])
+    # Without the reset, ten frames of averaged "peace" would delay the fist for several frames.
+    assert [smoother.update(fist) for _ in range(2)] == [None, "fist"]
