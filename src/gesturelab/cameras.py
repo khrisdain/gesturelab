@@ -88,7 +88,7 @@ def find(opener: Callable[[int], Any] | None = None, names: list[str] | None = N
     count = max(len(names), 1) + extra
     return [probe(i, names[i] if i < len(names) else None, opener) for i in range(count)]
 
-
+#changes for some task
 def table(cameras: list[Camera]) -> str:
     rows = []
     for c in cameras:
